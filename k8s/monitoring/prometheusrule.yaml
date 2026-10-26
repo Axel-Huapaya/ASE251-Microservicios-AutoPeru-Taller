@@ -1,0 +1,99 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: autoperu-taller-alertas
+  namespace: autoperu-taller
+  labels:
+    # Label que usa el chart por defecto para descubrir reglas (release = nombre del release de Helm)
+    release: monitoring
+    app: autoperu-taller
+spec:
+  groups:
+    # ---------------------------------------------------------------
+    # Disponibilidad de los servicios
+    # ---------------------------------------------------------------
+    - name: autoperu-taller.disponibilidad
+      rules:
+        # absent(...==1) dispara tanto si el target esta en DOWN como si desaparece
+        # (un pod en CrashLoopBackOff sale del Service y su serie "up" deja de existir).
+        - alert: RepuestosServiceCaido
+          expr: absent(up{namespace="autoperu-taller", job="repuestos-service"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+            servicio: repuestos-service
+          annotations:
+            summary: "El servicio de repuestos de AutoPeru Taller esta caido"
+            description: "Ninguna instancia de repuestos-service responde al scrape de /metrics desde hace mas de 1 minuto. Las ordenes no pueden validar stock y se estan rechazando con 503."
+
+        - alert: OrdenesServiceCaido
+          expr: absent(up{namespace="autoperu-taller", job="ordenes-service"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+            servicio: ordenes-service
+          annotations:
+            summary: "El servicio de ordenes esta caido"
+            description: "ordenes-service no responde al scrape desde hace mas de 1 minuto. Los clientes no pueden registrar compras."
+
+        - alert: PodsReiniciandoseSeguido
+          expr: increase(kube_pod_container_status_restarts_total{namespace="autoperu-taller"}[5m]) > 2
+          for: 30s
+          labels:
+            severity: warning
+          annotations:
+            summary: "El pod {{ $labels.pod }} se reinicia repetidamente"
+            description: "El contenedor {{ $labels.container }} del pod {{ $labels.pod }} reinicio mas de 2 veces en 5 minutos. Revisa los probes y los logs (kubectl logs / describe pod)."
+
+    # ---------------------------------------------------------------
+    # Rendimiento
+    # ---------------------------------------------------------------
+    - name: autoperu-taller.rendimiento
+      rules:
+        - alert: RepuestosLatenciaAlta
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_server_requests_seconds_bucket{namespace="autoperu-taller", application="repuestos-service", uri=~"/api.*"}[2m]))
+            ) > 1
+          for: 1m
+          labels:
+            severity: warning
+            servicio: repuestos-service
+          annotations:
+            summary: "Latencia p95 del servicio de repuestos superior a 1 segundo"
+            description: "El 5% de las consultas al servicio de repuestos tarda mas de 1s. Como ordenes espera como maximo unos segundos, pronto empezaran los timeouts."
+
+    # ---------------------------------------------------------------
+    # Negocio: ventas perdidas
+    # ---------------------------------------------------------------
+    - name: autoperu-taller.negocio
+      rules:
+        - alert: OrdenesFallandoPorRepuestos
+          expr: sum(increase(ordenes_errores_repuestos_total{namespace="autoperu-taller"}[2m])) > 3
+          for: 30s
+          labels:
+            severity: critical
+            tipo: negocio
+          annotations:
+            summary: "Se estan perdiendo ordenes por errores al consultar el servicio de repuestos"
+            description: "Mas de 3 ordenes fallaron en 2 minutos porque el servicio de repuestos no respondio a tiempo. Cada error es una venta que el cliente no pudo completar aunque ambos servicios figuren como UP."
+
+        - alert: OrdenesRechazadasPorFaltaDeRepuestos
+          expr: sum(increase(ordenes_rechazadas_stock_total{namespace="autoperu-taller"}[2m])) > 5
+          for: 30s
+          labels:
+            severity: warning
+            tipo: negocio
+          annotations:
+            summary: "Muchas ordenes rechazadas por falta de stock"
+            description: "Mas de 5 ordenes en 2 minutos fueron rechazadas por stock insuficiente. Hay demanda que no se esta atendiendo: reponer stock o revisar la planificacion de cosecha."
+
+        - alert: RepuestosAgotados
+          expr: repuestos_agotados{namespace="autoperu-taller"} > 0
+          for: 1m
+          labels:
+            severity: warning
+            tipo: negocio
+          annotations:
+            summary: "Hay {{ $value }} repuesto(s) agotado(s) en el servicio de repuestos"
+            description: "Al menos un repuesto tiene stock en cero. Mientras siga asi, todos los ordenes de ese repuesto se perderan."

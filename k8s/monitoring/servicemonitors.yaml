@@ -1,0 +1,43 @@
+# Un ServiceMonitor por microservicio.
+# El Prometheus Operator lee estos objetos y genera la configuracion de scrape de Prometheus.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: repuestos-service
+  namespace: autoperu-taller
+  labels:
+    app: repuestos-service
+    release: monitoring
+spec:
+  # Debe coincidir EXACTAMENTE con los labels del Service (k8s/repuestos/service.yaml)
+  selector:
+    matchLabels:
+      app: repuestos-service
+  namespaceSelector:
+    matchNames:
+      - autoperu-taller
+  endpoints:
+    # Nombre del puerto del Service (no el numero)
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ordenes-service
+  namespace: autoperu-taller
+  labels:
+    app: ordenes-service
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: ordenes-service
+  namespaceSelector:
+    matchNames:
+      - autoperu-taller
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ordenes-service
+  namespace: autoperu-taller
+  labels:
+    app: ordenes-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ordenes-service
+  template:
+    metadata:
+      labels:
+        app: ordenes-service
+    spec:
+      containers:
+        - name: ordenes-service
+          image: autoperu-ordenes:1.0.0
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            # DNS interno del cluster: <service>.<namespace>
+            - name: REPUESTOS_URL
+              value: "http://repuestos-service.autoperu-taller.svc.cluster.local:8080"
+            # Tiempo maximo de espera al servicio de repuestos (ms). Casuistica 2.
+            - name: REPUESTOS_TIMEOUT_MS
+              value: "2000"
+          # Mientras el startupProbe no tenga exito, liveness y readiness no se ejecutan.
+          # Asi la JVM tiene hasta 5 min para arrancar sin que kubelet la reinicie.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

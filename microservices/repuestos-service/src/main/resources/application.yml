@@ -1,0 +1,30 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: repuestos-service
+
+# /metrics (en vez de /actuator/prometheus):
+#  - base-path "/" saca los endpoints de Actuator de /actuator
+#  - path-mapping renombra "prometheus" a "metrics"
+#  - exposure.include solo expone ese endpoint (el /health es propio, ver HealthController)
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: prometheus
+      path-mapping:
+        prometheus: metrics
+  metrics:
+    tags:
+      application: repuestos-service
+    distribution:
+      # genera buckets para poder usar histogram_quantile (p95) en PromQL
+      percentiles-histogram:
+        http.server.requests: true
+
+repuestos:
+  # Retardo artificial (ms) aplicado a las consultas de negocio. Casuistica 2.
+  delay-ms: ${REPUESTOS_DELAY_MS:0}

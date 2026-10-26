@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repuestos-service
+  namespace: autoperu-taller
+  labels:
+    app: repuestos-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: repuestos-service
+  template:
+    metadata:
+      labels:
+        app: repuestos-service
+    spec:
+      containers:
+        - name: repuestos-service
+          image: autoperu-repuestos:1.0.0
+          # La imagen existe solo dentro del daemon de Minikube: nunca intentar descargarla de un registry
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            # Casuistica 2: retardo artificial en ms (0 = sin retardo)
+            - name: REPUESTOS_DELAY_MS
+              value: "0"
+          # Mientras el startupProbe no tenga exito, liveness y readiness no se ejecutan.
+          # Asi la JVM tiene hasta 5 min para arrancar sin que kubelet la reinicie.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
